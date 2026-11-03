@@ -348,6 +348,26 @@ const builders = {
     return g;
   },
 
+  // A curtain hanging from a rod: two panels with a natural sinusoidal wave.
+  curtain({ width = 2.4, height = 2.5 }) {
+    const fabric = mat('#d9ccb9', { rough: 1 });
+    const rod = mat('#6b5643', { rough: 0.5 });
+    const g = group(at(box(width + 0.14, 0.05, 0.05, rod, { r: 0.015 }), 0, height + 0.04, 0));
+    const half = width / 2 - 0.04;
+    const n = 14;           // thin strips per panel for a smooth wave
+    const cw = half / n;
+    const wave = 0.05;      // wave amplitude (m)
+    for (const sx of [-1, 1]) {
+      const phase = sx < 0 ? 0 : 0.6;   // offset so the two panels do not mirror each other
+      for (let i = 0; i < n; i++) {
+        const x = sx * ((n - 1 - i) * cw + cw / 2);   // middle out to the side
+        const z = wave * Math.sin((x / width) * Math.PI * 6 + phase);
+        g.add(at(box(cw - 0.004, height, 0.022, fabric, { r: 0.008 }), x, 0, z));
+      }
+    }
+    return g;
+  },
+
   // A straight flight up to the floor above: you step on at the front (+z) and climb towards the back.
   stairs({ width = 1, depth = 2.8, height = 2.9 }) {
     const steps = Math.max(3, Math.round(height / 0.18));
@@ -403,6 +423,7 @@ export function footprint(item) {
     case 'bookshelf': return [w || 1, 0.32];
     case 'stairs': return [w || 1, item.depth || 2.8];
     case 'fan': return [0.75, 0.75];
+    case 'curtain': return [w || 2.4, 0.1];
     default: return [0.6, 0.6];
   }
 }
