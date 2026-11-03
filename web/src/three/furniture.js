@@ -321,30 +321,30 @@ const builders = {
     return g;
   },
 
-  // A simple pedestal floor fan.
+  // A Xiaomi-style tower fan: round white tower with vertical black grille outlet on a white base.
   fan({ height = 1.3 }) {
-    const body = mat('#ece9e2', { rough: 0.6 });
-    const dark = mat('#2f3237', { rough: 0.5 });
-    const metal = mat('#9a9fa8', { rough: 0.3, metal: 0.8 });
-    const blade = mat('#c9cdd4', { rough: 0.35 });
-    const headY = height - 0.28; // motor centre height
-    const g = group(
-      at(cyl(0.34, 0.38, 0.06, dark), 0, 0, 0),
-      at(cyl(0.28, 0.3, 0.03, body), 0, 0.05, 0),
-      at(cyl(0.028, 0.028, headY - 0.05, metal, 12), 0, 0.05, 0),
-      at(cyl(0.17, 0.17, 0.2, body, 18), 0, headY, 0),
-    );
-    const blades = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const leaf = at(box(0.08, 0.3, 0.015, blade, { r: 0.015 }), 0, 0, 0);
-      leaf.rotation.z = (i / 3) * Math.PI * 2;
-      blades.add(leaf);
+    const white = mat('#f5f3ee', { rough: 0.55 });
+    const grill = mat('#2a2c30', { rough: 0.6 });
+    const g = group();
+    const r = 0.13;         // tower body radius
+    const baseH = 0.12;     // base total height
+    const towerH = height - baseH;  // tower height above the base
+    // white base: bottom on the floor (y=0), narrowing up to meet the tower
+    g.add(at(cyl(r, 0.2, 0.08, white, 20), 0, 0, 0));        // 底r0.2 顶r0.13, 底面y=0 顶面y=0.08
+    g.add(at(cyl(r, 0.155, 0.045, white, 20), 0, 0.075, 0)); // 底0.155 顶0.13, 底面0.075 顶面0.12
+    // round white tower, bottom buried in the base so they connect seamlessly
+    g.add(at(cyl(r, r, towerH, white, 24), 0, baseH - 0.02, 0));  // 底面0.10 顶面0.10+1.18
+    // vertical black grille strips on the front: top aligned with the tower top, flush with the surface
+    const grillH = towerH * 0.75;
+    const n = 8;
+    const gw = r * 1.5;
+    const grillBot = baseH - 0.02 + towerH - grillH;   // top edge meets the tower top
+    for (let i = 0; i < n; i++) {
+      const gx = -gw / 2 + (gw * (i + 0.5)) / n;
+      g.add(at(box(0.012, grillH, 0.007, grill, { r: 0.003 }), gx, grillBot, r - 0.003));
     }
-    blades.position.set(0, headY, 0.11);
-    g.add(blades);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.014, 8, 28), metal);
-    ring.position.set(0, headY, 0.13);
-    g.add(ring);
+    // thin top cap
+    g.add(at(cyl(r + 0.004, r + 0.004, 0.015, white, 20), 0, baseH - 0.02 + towerH - 0.008, 0));
     return g;
   },
 
