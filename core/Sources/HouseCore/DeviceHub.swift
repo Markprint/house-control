@@ -29,6 +29,7 @@ public final class DeviceHub {
         var sensor: (service: String, id: String)?
     }
     private var serviceLinks: [String: Link] = [:]
+    private var standaloneSensors: [String: (service: String, id: String)] = [:]
     /// Sensors from other platforms that report the room of a Smart Life AC.
     private var tuyaSensors: [String: (service: String, id: String)] = [:]
     private var refresh: Task<Void, Never>?
@@ -71,18 +72,20 @@ public final class DeviceHub {
     // MARK: - Links
 
     public var isConnected: Bool { connectedCloud != nil || services.contains { $0.isConnected && $0.controlsDevices } }
-    public var hasLinks: Bool { !links.isEmpty || !serviceLinks.isEmpty }
+    public var hasLinks: Bool { !links.isEmpty || !serviceLinks.isEmpty || !standaloneSensors.isEmpty }
     /// True when there is something to read at all.
     public var canPoll: Bool {
         (connectedCloud != nil && !links.isEmpty)
             || serviceLinks.values.contains { service($0.service).map { $0.isConnected && $0.controlsDevices } ?? false }
+            || standaloneSensors.values.contains { service($0.service).map { $0.isConnected && $0.controlsDevices } ?? false }
     }
-    public var linkedDeviceCount: Int { links.count + serviceLinks.values.filter { !$0.id.isEmpty }.count }
+    public var linkedDeviceCount: Int { links.count + serviceLinks.values.filter { !$0.id.isEmpty }.count + standaloneSensors.count }
 
     /// Takes the device links from `plan`; nil (a bundled demo) means everything is simulated.
     public func setLinks(from plan: [String: Any]?) {
         links = [:]
         serviceLinks = [:]
+        standaloneSensors = [:]
         tuyaSensors = [:]
         defer { watchLinks() }
         guard let plan else { return }
@@ -103,6 +106,13 @@ public final class DeviceHub {
                 }
             }
         }
+        for device in plan["sensors"] as? [[String: Any]] ?? [] {
+            guard let appId = device["id"] as? String,
+                  let link = device["link"] as? [String: Any],
+                  let service = link["service"] as? String,
+                  let id = link["id"] as? String, !id.isEmpty else { continue }
+            standaloneSensors[appId] = (service, id)
+        }
     }
 
     /// `{"service": "hue", "id": "…"}` in a plan.
@@ -120,6 +130,7 @@ public final class DeviceHub {
             if let sensor = link.sensor { ids[sensor.service, default: []].insert(sensor.id) }
         }
         for sensor in tuyaSensors.values { ids[sensor.service, default: []].insert(sensor.id) }
+        for sensor in standaloneSensors.values { ids[sensor.service, default: []].insert(sensor.id) }
         for service in services { service.watch(ids[service.id] ?? []) }
     }
 
@@ -190,7 +201,7 @@ public final class DeviceHub {
         let (fromTuya, fromServices) = await (tuyaPart, servicePart)
         guard fromTuya != nil || fromServices != nil else { return nil }
         var merged: [String: Any] = [:]
-        for key in ["lights", "acs", "features"] {
+        for key in ["lights", "acs", "features", "sensors"] {
             var section = fromTuya?[key] as? [String: Any] ?? [:]
             for (id, value) in fromServices?[key] as? [String: Any] ?? [:] {
                 if var existing = section[id] as? [String: Any], let more = value as? [String: Any] {
@@ -213,6 +224,7 @@ public final class DeviceHub {
             if let sensor = link.sensor { wanted[sensor.service, default: []].insert(sensor.id) }
         }
         for sensor in tuyaSensors.values { wanted[sensor.service, default: []].insert(sensor.id) }
+        for sensor in standaloneSensors.values { wanted[sensor.service, default: []].insert(sensor.id) }
         var readings: [String: [String: DeviceReading]] = [:]
         var answered = false
         for (serviceId, ids) in wanted {
@@ -222,7 +234,23 @@ public final class DeviceHub {
             answered = true
         }
         guard answered else { return nil }
-        var lights: [String: Any] = [:], acs: [String: Any] = [:], features: [String: Any] = [:]
+        var lights: [String: Any] = [:], acs: [String: Any] = [:], features: [String: Any] = [:], sensors: [String: Any] = [:]
+        for (serviceId, ids) in wanted {
+            for id in ids {
+                guard let reading = readings[serviceId]?[id] else { continue }
+                var values: [String: Any] = [:]
+                if let t = reading.temperature { values["temperature"] = t }
+                if let h = reading.humidity { values["humidity"] = h }
+                if !values.isEmpty { sensors["\(serviceId):\(id)"] = values }
+            }
+        }
+        for (appId, sensor) in standaloneSensors {
+            guard let reading = readings[sensor.service]?[sensor.id] else { continue }
+            var values: [String: Any] = [:]
+            if let t = reading.temperature { values["temperature"] = t }
+            if let h = reading.humidity { values["humidity"] = h }
+            if !values.isEmpty { sensors[appId] = values }
+        }
         for (id, link) in serviceLinks {
             let reading = readings[link.service]?[link.id]
             if link.kind == .light, let light = reading?.light, reading?.online != false { lights[id] = light }
@@ -236,7 +264,7 @@ public final class DeviceHub {
         for (id, sensor) in tuyaSensors {
             if let t = readings[sensor.service]?[sensor.id]?.temperature { acs[id] = ["roomTemp": t] }
         }
-        return ["lights": lights, "acs": acs, "features": features]
+        return ["lights": lights, "acs": acs, "features": features, "sensors": sensors]
     }
 
     private func pollCloud() async -> [String: Any]? {

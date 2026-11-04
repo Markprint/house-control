@@ -54,7 +54,7 @@ async function boot() {
   }
 
   const store = createStore(config);
-  const linked = [...config.lights, ...config.acs].some(isLinked);
+  const linked = [...config.lights, ...config.acs, ...config.sensors].some(isLinked);
   // Never invent a starting state for real hardware: it reports its own.
   if (!store.restored && !linked) {
     // First launch: start with something worth looking at.
@@ -253,6 +253,7 @@ async function boot() {
   const opened = window.__HOUSE_BOOT__?.openDevice || new URLSearchParams(location.search).get('device');
   if (store.acCfg.has(opened)) panel.openSheet({ kind: 'ac', id: opened });
   else if (store.lightCfg.has(opened)) panel.openSheet({ kind: 'light', id: opened });
+  else if (config.sensors?.some((sensor) => sensor.id === opened)) panel.openSensor(opened);
 
   if (!isNative) show();
   post('ready', { summary: store.summary() });

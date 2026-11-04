@@ -132,6 +132,13 @@ export function normalize(raw) {
     return { ...a, name: a.name || a.id, y: a.y ?? 2.2, min: a.min ?? 16, max: a.max ?? 30, level: roomLevel.get(a.room) };
   });
 
+  const sensors = (raw.sensors || []).map((sensor) => {
+    unique(sensor.id, 'A sensor');
+    need(roomIds.has(sensor.room), `Sensor "${sensor.id}" refers to unknown room "${sensor.room}"`);
+    need(isPoint(sensor.pos), `Sensor "${sensor.id}" needs "pos": [x, z]`);
+    return { ...sensor, name: sensor.name || sensor.id, level: roomLevel.get(sensor.room) };
+  });
+
   const scenes = (raw.scenes || []).map((s) => {
     need(typeof s.id === 'string' && s.id, 'A scene is missing an "id"');
     return { id: s.id, name: s.name || s.id, icon: s.icon || 'sun', lights: s.lights || {}, acs: s.acs || {} };
@@ -169,6 +176,7 @@ export function normalize(raw) {
     furniture,
     lights,
     acs,
+    sensors,
     scenes,
     bounds: all,
   };

@@ -99,15 +99,44 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
     acs.set(cfg.id, unit);
     floors.get(cfg.level).group.add(unit.group);
   }
+  const sensors = new Map();
+  for (const cfg of config.sensors || []) {
+    const group = new THREE.Group();
+    group.position.set(cfg.pos[0], 0.16, cfg.pos[1]);
+    group.rotation.y = rad(cfg.rot || 0);
+    group.add(buildFurniture([{ type: 'thermometer', pos: [0, 0], y: 0 }]));
+    group.userData = { kind: 'sensor', id: cfg.id, cfg };
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.34), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 0.19;
+    hit.userData = group.userData;
+    group.add(hit);
+    const label = new THREE.Group();
+    label.position.set(0, 0.38, 0.27);
+    const labelBg = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.2), new THREE.MeshBasicMaterial({ color: 0x14232b, transparent: true, opacity: 0.94, side: THREE.DoubleSide, depthTest: false }));
+    labelBg.renderOrder = 3;
+    label.add(labelBg);
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 256;
+    labelCanvas.height = 80;
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    const labelText = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.17), new THREE.MeshBasicMaterial({ map: labelTexture, transparent: true, side: THREE.DoubleSide, depthTest: false }));
+    labelText.position.z = 0.002;
+    labelText.renderOrder = 4;
+    label.add(labelText);
+    group.add(label);
+    sensors.set(cfg.id, { cfg, group, hit, labelCanvas, labelTexture });
+    floors.get(cfg.level).group.add(group);
+  }
   let hitTargets = [];
 
   // The floors above the one on show are lifted off; the ones under it stay, unlit, as its base.
   function showLevel() {
     for (const [id, { group }] of floors) group.visible = levelById.get(id).elevation <= level.elevation;
-    for (const unit of [...lights.values(), ...acs.values()]) unit.group.visible = unit.cfg.level === level.id;
+    for (const unit of [...lights.values(), ...acs.values(), ...sensors.values()]) unit.group.visible = unit.cfg.level === level.id;
     hitTargets = [
       ...[...lights.values()].filter((u) => u.group.visible).map((u) => u.hit),
       ...[...acs.values()].filter((u) => u.group.visible).map((u) => u.hit),
+      ...[...sensors.values()].filter((u) => u.group.visible).map((u) => u.hit),
       ...floors.get(level.id).house.floors,
     ];
     assignShadows();
@@ -233,6 +262,18 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
       unit.apply(store.state.lights[id], { ...opts, delay: opts.stagger ? 0.25 + i++ * 0.06 : 0 });
     }
     for (const [id, unit] of acs) unit.apply(store.state.acs[id], opts);
+    for (const [id, unit] of sensors) {
+      const context = unit.labelCanvas.getContext('2d');
+      const reading = store.state.sensors?.[id] || {};
+      context.clearRect(0, 0, 256, 80);
+      context.fillStyle = '#d8f5f4';
+      context.font = 'bold 32px system-ui, sans-serif';
+      context.textAlign = 'center';
+      const temp = reading.temperature == null ? '--°' : `${Number(reading.temperature).toFixed(1)}°`;
+      const humidity = reading.humidity == null ? '--%' : `${Number(reading.humidity).toFixed(0)}%`;
+      context.fillText(`${temp}  ${humidity}`, 128, 52);
+      unit.labelTexture.needsUpdate = true;
+    }
     wake();
   }
 
@@ -263,7 +304,7 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
   }
 
   function unitOf(t) {
-    return t?.kind === 'light' ? lights.get(t.id) : t?.kind === 'ac' ? acs.get(t.id) : null;
+    return t?.kind === 'light' ? lights.get(t.id) : t?.kind === 'ac' ? acs.get(t.id) : t?.kind === 'sensor' ? sensors.get(t.id) : null;
   }
 
   function screenAnchor(t) {
@@ -431,8 +472,9 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
       if (on && on !== level.id) world.setLevel(on);
       rig.focus = next;
       rig.zoom = 1;
-      rig.goal.az = baseAz + (next?.kind === 'ac' ? (WALL_SIDE[acs.get(next.id).cfg.wall] ?? 0) : 0);
-      rig.goal.el = next?.kind === 'ac' ? 30 : config.camera.elevation;
+      const ac = next?.kind === 'ac' ? acs.get(next.id) : null;
+      rig.goal.az = baseAz + (ac ? (WALL_SIDE[ac.cfg.wall] ?? 0) : 0);
+      rig.goal.el = ac ? 30 : config.camera.elevation;
       frameGoal();
       wake();
     },
@@ -459,6 +501,12 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
 
     dispose() {
       unsubscribe();
+      for (const sensor of sensors.values()) {
+        sensor.labelTexture.dispose();
+        sensor.group.traverse((object) => {
+          if (object.isMesh) object.geometry.dispose();
+        });
+      }
       running = false;
       if (raf) cancelAnimationFrame(raf);
       raf = 0;
@@ -483,7 +531,7 @@ export function createWorld(canvas, config, store, { onHover, onPick, onLevel = 
   // The floor a room, a lamp or an AC is on.
   function levelOf(t) {
     if (t.kind === 'room') return config.rooms.find((r) => r.id === t.id)?.level;
-    return (t.kind === 'ac' ? acs : lights).get(t.id)?.cfg.level;
+    return (t.kind === 'ac' ? acs : t.kind === 'sensor' ? sensors : lights).get(t.id)?.cfg.level;
   }
 
   syncAll({ instant: true });

@@ -84,6 +84,9 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
     tooltip, panel, sheet, toastEl);
   const card = h('div.card.booting', h('div.notch'), clip);
   root.replaceChildren(card);
+  const sensorStyle = document.createElement('style');
+  sensorStyle.textContent = '.sensor-reading{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:18px;background:rgba(255,255,255,.07);color:var(--text,#f5f5f5)}.sensor-reading b{flex:1;font-size:14px}.sensor-reading span:not(.sensor-icon){font-variant-numeric:tabular-nums;color:rgba(255,255,255,.8)}.sensor-icon{color:#75d8e2;display:flex}';
+  root.append(sensorStyle);
 
   /* ---------- scenes ---------- */
 
@@ -282,10 +285,19 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
       for (const room of config.rooms) {
         if (room.level !== level.id || (ui.room !== 'all' && room.id !== ui.room)) continue;
         const devices = [...tiles.values()].filter((t) => t.cfg.room === room.id);
-        if (!devices.length) continue;
+        const roomSensors = (config.sensors || []).filter((sensor) => sensor.room === room.id);
+        if (!devices.length && !roomSensors.length) continue;
         if (ui.room === 'all') nodes.push(h('div.group-label', room.name));
         devices.filter((t) => t.kind === 'ac').forEach(add);
         devices.filter((t) => t.kind === 'light').forEach(add);
+        for (const sensor of roomSensors) {
+          const reading = state.sensors[sensor.id] || {};
+          nodes.push(h('div.sensor-reading', { 'data-sensor-id': sensor.id },
+            h('span.sensor-icon', icon('thermo', 16, 2)),
+            h('b', sensor.name),
+            h('span.sensor-temp', reading.temperature != null ? `${Number(reading.temperature).toFixed(1)}°C` : '—°C'),
+            h('span.sensor-humidity', reading.humidity != null ? `${Number(reading.humidity).toFixed(0)}%` : '—%')));
+        }
       }
       if (multiLevel && ui.room === 'all' && nodes.length > before) nodes.splice(before, 0, h('div.level-label', level.name));
     }
@@ -295,6 +307,14 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
     }
     grid.replaceChildren(...nodes);
     grid.parentElement.scrollTop = 0;
+  }
+
+  function openSensor(id) {
+    ui.room = config.sensors.find((sensor) => sensor.id === id)?.room || 'all';
+    layoutTiles();
+    update();
+    const node = grid.querySelector(`[data-sensor-id="${CSS.escape(id)}"]`);
+    node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   /* ---------- sheets ---------- */
@@ -580,6 +600,11 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
     listTitle.replaceChildren(h('b', ui.room === 'all' ? 'Whole home' : roomName.get(ui.room)), ` · ${scopedOn} of ${scoped.length} on`);
 
     for (const t of tiles.values()) t.update();
+    for (const node of grid.querySelectorAll('[data-sensor-id]')) {
+      const reading = state.sensors[node.dataset.sensorId] || {};
+      node.querySelector('.sensor-temp').textContent = reading.temperature != null ? `${Number(reading.temperature).toFixed(1)}°C` : '—°C';
+      node.querySelector('.sensor-humidity').textContent = reading.humidity != null ? `${Number(reading.humidity).toFixed(0)}%` : '—%';
+    }
     sheetView?.update();
     const m = css(mood());
     card.style.setProperty('--mood', m);
@@ -599,6 +624,7 @@ export function createPanel(root, config, store, { onFocus, onMenu }) {
     attach(w) { world = w; card.classList.remove('booting'); levelShown(w.level); },
     /** The model went to another floor by itself (a room or a device on it was picked). */
     levelShown,
+    openSensor,
     showTooltip,
     openSheet,
     closeSheet,

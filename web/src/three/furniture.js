@@ -364,6 +364,21 @@ const builders = {
     return g;
   },
 
+  thermometer() {
+    const shell = mat('#e5e9eb', { rough: 0.45 });
+    const screen = mat('#263640', { rough: 0.38, metal: 0.08 });
+    const accent = mat('#55c8d8', { rough: 0.4, emissive: '#167887', emissiveIntensity: 0.35 });
+    const g = group(
+      at(box(0.16, 0.26, 0.055, shell, { r: 0.045 }), 0, 0, 0),
+      at(box(0.112, 0.105, 0.008, screen, { r: 0.018 }), 0, 0.095, 0.03),
+      at(box(0.026, 0.012, 0.004, accent, { r: 0.004 }), -0.025, 0.112, 0.036),
+      at(box(0.032, 0.006, 0.004, accent, { r: 0.002 }), 0.022, 0.085, 0.036),
+    );
+    const sensorBody = at(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.025, 12), screen), 0.052, 0.04, 0.029);
+    g.add(sensorBody);
+    return g;
+  },
+
   // A pair of curtains with continuous folds, a center opening, and tiebacks.
   curtain({ width = 2.4, height = 2.5 }) {
     const fabric = mat('#d9ccb9', { rough: 1 });
@@ -474,6 +489,7 @@ export function footprint(item) {
     case 'stairs': return [w || 1, item.depth || 2.8];
     case 'fan': return [0.75, 0.75];
     case 'curtain': return [w || 2.4, 0.1];
+    case 'thermometer': return [0.22, 0.12];
     default: return [0.6, 0.6];
   }
 }

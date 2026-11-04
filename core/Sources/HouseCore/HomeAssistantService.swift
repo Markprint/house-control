@@ -176,9 +176,9 @@ public final class HomeAssistantService: DeviceService {
             }
             device.detail = "climate · " + (attributes["hvac_modes"] as? [String] ?? []).joined(separator: ", ")
         case "sensor":
-            guard isTemperature(attributes) else { return nil }
+            guard isTemperature(attributes) || isHumidity(attributes) else { return nil }
             device = ServiceDevice(id: id, name: name, kind: .sensor)
-            device.detail = "temperature sensor"
+            device.detail = isTemperature(attributes) ? "temperature sensor" : "humidity sensor"
         default:
             return nil
         }
@@ -197,6 +197,11 @@ public final class HomeAssistantService: DeviceService {
     static func isTemperature(_ attributes: [String: Any]) -> Bool {
         (attributes["device_class"] as? String) == "temperature"
             || ["°C", "°F"].contains(attributes["unit_of_measurement"] as? String ?? "")
+    }
+
+    static func isHumidity(_ attributes: [String: Any]) -> Bool {
+        (attributes["device_class"] as? String) == "humidity"
+            || (attributes["unit_of_measurement"] as? String) == "%"
     }
 
     /// The panel's AC modes and the climate entity's names for them.
@@ -258,8 +263,12 @@ public final class HomeAssistantService: DeviceService {
                 "swing": swings.contains("off") && swings.count > 1,
                 "sleep": presets.contains("sleep"), "eco": presets.contains("eco"),
             ]
-        } else if id.hasPrefix("sensor."), let t = Double(value) {
-            reading.temperature = (attributes["unit_of_measurement"] as? String) == "°F" ? (t - 32) * 5 / 9 : t
+        } else if id.hasPrefix("sensor."), let number = Double(value) {
+            if Self.isTemperature(attributes) {
+                reading.temperature = (attributes["unit_of_measurement"] as? String) == "°F" ? (number - 32) * 5 / 9 : number
+            } else if Self.isHumidity(attributes) {
+                reading.humidity = number
+            }
         }
         return reading
     }

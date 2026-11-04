@@ -19,8 +19,8 @@ const sv = (tag, attrs = {}, ...kids) => {
   return el;
 };
 
-const KEYS = { room: 'rooms', light: 'lights', ac: 'acs', furniture: 'furniture', opening: 'openings', scene: 'scenes' };
-const TITLES = { room: 'Rooms', light: 'Lights', ac: 'Air conditioners', furniture: 'Furniture', opening: 'Doors & windows', scene: 'Scenes' };
+const KEYS = { room: 'rooms', light: 'lights', ac: 'acs', sensor: 'sensors', furniture: 'furniture', opening: 'openings', scene: 'scenes' };
+const TITLES = { room: 'Rooms', light: 'Lights', ac: 'Air conditioners', sensor: 'Thermometers', furniture: 'Furniture', opening: 'Doors & windows', scene: 'Scenes' };
 const FLOOR_FILL = { oak: '#4a3d2e', walnut: '#3c2f28', tile: '#39424b', stone: '#30353c' };
 const WALLS = ['north', 'east', 'south', 'west'];
 const LEVEL_NAMES = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor', 'Fifth floor'];
@@ -180,7 +180,7 @@ export async function bootEditor(root) {
   const levelRooms = (id = level) => doc.rooms.filter((r) => (r.level ?? firstLevel()) === id);
   // The floor an item is on; null for a scene, which is for the whole home.
   function levelOf(kind, item) {
-    if (kind === 'light' || kind === 'ac') return roomLevel(item.room);
+    if (kind === 'light' || kind === 'ac' || kind === 'sensor') return roomLevel(item.room);
     if (kind === 'room' || kind === 'furniture' || kind === 'opening') return item.level ?? firstLevel();
     return null;
   }
@@ -423,6 +423,7 @@ export async function bootEditor(root) {
       ['room', 'room', 'Room', () => add('room')],
       ['light', 'bulb', 'Lamp', () => add('light')],
       ['ac', 'ac', 'Air conditioner', () => add('ac')],
+      ['sensor', 'thermo', 'Thermometer', () => add('sensor')],
       ['door', 'opening', 'Door', () => add('opening', { type: 'door' })],
       ['window', 'window', 'Window', () => add('opening', { type: 'window' })],
       ['stairs', 'stairs', 'Stairs', () => add('furniture', { type: 'stairs' })],
@@ -442,10 +443,10 @@ export async function bootEditor(root) {
   function validate() {
     try {
       valid = normalize(structuredClone(doc));
-      const linked = [...doc.lights, ...doc.acs].filter(isLinked).length;
+      const linked = [...doc.lights, ...doc.acs, ...doc.sensors].filter(isLinked).length;
       status.className = 'status';
       const floors = levelList().length > 1 ? `${levelList().length} floors · ` : '';
-      status.replaceChildren(h('span.ok', '●'), ` ${floors}${doc.rooms.length} rooms · ${doc.lights.length} lights · ${doc.acs.length} ACs · `,
+      status.replaceChildren(h('span.ok', '●'), ` ${floors}${doc.rooms.length} rooms · ${doc.lights.length} lights · ${doc.acs.length} ACs · ${doc.sensors.length} thermometers · `,
         `${linked} linked to real devices`, dirty ? h('span.dirty', ' · unsaved changes') : '');
     } catch (e) {
       valid = null;
@@ -457,7 +458,7 @@ export async function bootEditor(root) {
   }
 
   function previewStore(cfg) {
-    const state = { lights: {}, acs: {} };
+    const state = { lights: {}, acs: {}, sensors: {} };
     for (const l of cfg.lights) state.lights[l.id] = { on: previewLights, brightness: 0.85, temp: 3200, color: l.color || null };
     for (const a of cfg.acs) state.acs[a.id] = { on: previewLights, mode: 'cool', fan: 'auto', swing: 'swing', sleep: false, target: 23 };
     return { state, on: () => () => {} };
@@ -502,6 +503,7 @@ export async function bootEditor(root) {
     if (kind === 'room') return [item.name || item.id, `${fix(item.rect[2])} × ${fix(item.rect[3])} m`];
     if (kind === 'light') return [item.name || item.id, `${roomName(item.room)} · ${item.type}`];
     if (kind === 'ac') return [item.name || item.id, `${roomName(item.room)} · ${item.wall} wall`];
+    if (kind === 'sensor') return [item.name || item.id, `${roomName(item.room)} · ${item.link?.id || 'not linked'}`];
     if (kind === 'furniture') return [item.type, roomName(roomAt(item.pos)?.id) || '—'];
     if (kind === 'opening' && !item.to) return [item.type || 'door', ''];
     if (kind === 'opening') return [item.type || 'door', `${fix(Math.hypot(item.to[0] - item.from[0], item.to[1] - item.from[1]))} m`];
@@ -548,7 +550,7 @@ export async function bootEditor(root) {
   }
 
   function uniqueId(base) {
-    const ids = new Set([...doc.rooms, ...doc.lights, ...doc.acs, ...doc.scenes].map((x) => x.id));
+    const ids = new Set([...doc.rooms, ...doc.lights, ...doc.acs, ...doc.sensors, ...doc.scenes].map((x) => x.id));
     if (!ids.has(base)) return base;
     for (let i = 2; ; i++) if (!ids.has(`${base}${i}`)) return `${base}${i}`;
   }
@@ -572,6 +574,9 @@ export async function bootEditor(root) {
     } else if (kind === 'ac') {
       if (!room) return toast('Add a room first', true);
       list.push({ id: uniqueId(`${room.id}.ac`), name: `${room.name} AC`, room: room.id, wall: 'north', pos: [center[0], room.rect[1]], y: 2.2 });
+    } else if (kind === 'sensor') {
+      if (!room) return toast('Add a room first', true);
+      list.push(stamp({ id: uniqueId(`${room.id}.thermometer`), name: `${room.name} thermometer`, room: room.id, pos: freeSpot(room, center), type: 'thermometer' }));
     } else if (kind === 'furniture') {
       list.push(stamp(type === 'stairs' ? { type, pos: center, rot: 0, width: 1, depth: 2.8 } : { type: type || 'sofa', pos: center, rot: 0 }));
     } else if (kind === 'opening') {
@@ -607,7 +612,7 @@ export async function bootEditor(root) {
       copy.id = uniqueId(item.id);
       copy.name = `${item.name || item.id} 2`;
       copy.rect[0] = fix(item.rect[0] + item.rect[2]);
-    } else if (kind === 'light' || kind === 'ac') {
+    } else if (kind === 'light' || kind === 'ac' || kind === 'sensor') {
       copy.id = uniqueId(item.id);
       for (const key of ['tuya', 'link', 'sensor']) delete copy[key];
       if (kind === 'ac') {
@@ -662,7 +667,7 @@ export async function bootEditor(root) {
     }
     doc.rooms.push(next);
     const inNext = ([px, pz]) => px >= next.rect[0] && px <= next.rect[0] + next.rect[2] && pz >= next.rect[1] && pz <= next.rect[1] + next.rect[3];
-    for (const dev of [...doc.lights, ...doc.acs]) if (dev.room === room.id && inNext(dev.pos)) dev.room = next.id;
+    for (const dev of [...doc.lights, ...doc.acs, ...doc.sensors]) if (dev.room === room.id && inNext(dev.pos)) dev.room = next.id;
     const mid = across ? [fix(x + cut), fix(z + d / 2)] : [fix(x + w / 2), fix(z + cut)];
     const door = across ? { from: [mid[0], fix(mid[1] - 0.45)], to: [mid[0], fix(mid[1] + 0.45)] } : { from: [fix(mid[0] - 0.45), mid[1]], to: [fix(mid[0] + 0.45), mid[1]] };
     doc.openings.push(stamp({ type: 'door', ...door, ...(room.level ? { level: room.level } : {}) }));
@@ -704,7 +709,7 @@ export async function bootEditor(root) {
     snapshot();
     const [gone] = doc[KEYS[kind]].splice(index, 1);
     if (kind === 'room') dropRooms(new Set([gone.id]));
-    else if (kind === 'light' || kind === 'ac') forgetDevices();
+    else if (kind === 'light' || kind === 'ac' || kind === 'sensor') forgetDevices();
     sel = { kind: 'home' };
     touch();
   }
@@ -714,12 +719,13 @@ export async function bootEditor(root) {
     doc.rooms = doc.rooms.filter((r) => !ids.has(r.id));
     doc.lights = doc.lights.filter((l) => !ids.has(l.room));
     doc.acs = doc.acs.filter((a) => !ids.has(a.room));
+    doc.sensors = doc.sensors.filter((sensor) => !ids.has(sensor.room));
     forgetDevices();
   }
 
   // Scenes let go of devices that are gone.
   function forgetDevices() {
-    const ids = new Set([...doc.lights, ...doc.acs].map((d) => d.id));
+    const ids = new Set([...doc.lights, ...doc.acs, ...doc.sensors].map((d) => d.id));
     for (const sc of doc.scenes) {
       for (const map of [sc.lights, sc.acs]) for (const id of Object.keys(map || {})) if (id !== '*' && !ids.has(id)) delete map[id];
     }
@@ -816,6 +822,19 @@ export async function bootEditor(root) {
       }, big ? sv('rect', { x: -0.62, y: -0.12, width: 1.24, height: 0.74, class: 'hit' }) : null,
         sv('rect', { x: -0.47, y: 0.08, width: 0.94, height: 0.24, rx: 0.07 }),
         sv('path', { d: 'M-0.3 0.42v0.22M0 0.42v0.3M0.3 0.42v0.22', class: 'flow' })));
+    });
+
+    doc.sensors.forEach((sensor, i) => {
+      if (!here('sensor', sensor)) return;
+      const g = sv('g', {
+        class: `p-sensor${isSel('sensor', i) ? ' sel' : ''}${isLinked(sensor) ? ' linked' : ''}`,
+        'data-kind': 'sensor', 'data-index': i,
+        transform: `translate(${sensor.pos[0]} ${sensor.pos[1]})`,
+      });
+      if (big) g.append(sv('circle', { r: 0.48, class: 'hit' }));
+      g.append(sv('rect', { x: -0.16, y: -0.24, width: 0.32, height: 0.48, rx: 0.07 }),
+        sv('path', { d: 'M0 0.1V-0.08a0.06 0.06 0 1 1 0.12 0V0.1', class: 'sensor-mark' }));
+      kids.push(g);
     });
 
     doc.lights.forEach((l, i) => {
@@ -987,6 +1006,7 @@ export async function bootEditor(root) {
       drag.riders = [
         ...doc.lights.filter((l) => l.room === item.id).map((o) => ({ o, pos: [...o.pos] })),
         ...doc.acs.filter((a) => a.room === item.id).map((o) => ({ o, pos: [...o.pos] })),
+        ...doc.sensors.filter((sensor) => sensor.room === item.id).map((o) => ({ o, pos: [...o.pos] })),
         ...doc.furniture.filter((f) => Array.isArray(f.pos) && here('furniture', f) && inside(f.pos)).map((o) => ({ o, pos: [...o.pos] })),
       ];
       drag.openings = doc.openings.filter((o) => here('opening', o) && inside(o.from) && inside(o.to)).map((o) => ({ o, from: [...o.from], to: [...o.to] }));
@@ -1081,7 +1101,7 @@ export async function bootEditor(root) {
     } else {
       const item = doc[KEYS[drag.kind]][drag.index];
       item.pos = [fix(drag.pos[0] + dx), fix(drag.pos[1] + dz)];
-      if (drag.kind === 'light') {
+      if (drag.kind === 'light' || drag.kind === 'sensor') {
         const room = roomAt(item.pos);
         if (room) item.room = room.id;
       }
@@ -1313,6 +1333,14 @@ export async function bootEditor(root) {
         h('p.note', 'Dragging the unit on the plan snaps it to the nearest wall of its room.')),
       links.deviceSection(item, 'ac', linkHooks),
       links.sensorSection(item, linkHooks));
+    } else if (kind === 'sensor') {
+      head(item.name || item.id, `id: ${item.id}`);
+      nodes.push(section('Thermometer',
+        bind('Name', text(), prop(item, 'name', '')),
+        bind('Room', choice(doc.rooms.map((r) => [r.id, r.name || r.id])), { ...prop(item, 'room'), event: 'change' }),
+        row(bind('X', number(), { ...at(item, 'pos', 0), parse: parseNum }), bind('Z', number(), { ...at(item, 'pos', 1), parse: parseNum })),
+        h('p.note', 'Drag the thermometer anywhere in the room.'),
+        links.deviceSection(item, 'sensor', linkHooks)));
     } else if (kind === 'furniture') {
       const stairs = item.type === 'stairs';
       head(stairs ? 'Stairs' : item.type, stairs ? 'Up to the floor above' : 'Decoration only');
@@ -1401,7 +1429,7 @@ export async function bootEditor(root) {
     if (tuya.error) return h('p.note.bad', tuya.error);
     if (!tuya.devices) return null;
     if (!tuya.devices.length) return h('p.note.bad', 'Connected, but this account has no devices yet.');
-    const used = new Map([...doc.lights, ...doc.acs].filter((d) => d.tuya?.deviceId).map((d) => [d.tuya.deviceId, d.name]));
+    const used = new Map([...doc.lights, ...doc.acs, ...doc.sensors].filter((d) => d.tuya?.deviceId).map((d) => [d.tuya.deviceId, d.name]));
     return h('div.devices-list', h('h3', `${tuya.devices.length} devices in your account`), tuya.devices.map((d) => h('div.device',
       h(`span.dot${d.online ? '.on' : ''}`),
       h('div', h('b', d.name), h('span', `${d.product || d.category || 'device'} · ${d.codes.join(', ') || 'no functions reported'}`)),
@@ -1844,7 +1872,7 @@ export async function bootEditor(root) {
       },
       headActions() {
         const nodes = [];
-        if (sel.kind === 'furniture' || (sel.kind === 'light' && doc.lights[sel.index]?.type === 'strip')) {
+        if (sel.kind === 'furniture' || sel.kind === 'sensor' || (sel.kind === 'light' && doc.lights[sel.index]?.type === 'strip')) {
           nodes.push(h('button.p-icon', { 'aria-label': 'Turn 90°', onclick: () => { haptic('light'); rotate(90); } }, icon('rotateCw', 18, 2)));
         }
         if (sel.index != null) {
