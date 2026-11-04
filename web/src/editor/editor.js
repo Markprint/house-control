@@ -91,6 +91,17 @@ export async function bootEditor(root) {
   const inspector = h('div.inspector');
   const previewHost = h('div.preview');
   const previewToggle = h('button.chip', { onclick: () => { previewLights = !previewLights; schedulePreview(0); } });
+  const fullscreenToggle = h('button.chip', {
+    style: { right: '10px', top: '46px' },
+    title: 'Fullscreen preview',
+    onclick: () => {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      const req = previewHost.requestFullscreen || previewHost.webkitRequestFullscreen;
+      if (document.fullscreenElement || document.webkitFullscreenElement) exit.call(document);
+      else if (req) req.call(previewHost);
+    },
+  });
+  fullscreenToggle.textContent = '⛶ 全屏';
 
   if (isPhone) buildPhoneLayout();
   else root.replaceChildren(h('div.editor',
@@ -104,7 +115,7 @@ export async function bootEditor(root) {
         saveBtn)),
     sidebar,
     h('main.canvas', plan, levelBar, emptyCard, addBar(), zoomBar()),
-    h('aside.right', h('div.preview-wrap', previewHost, previewToggle), inspector),
+    h('aside.right', h('div.preview-wrap', previewHost, previewToggle, fullscreenToggle), inspector),
     h('footer.foot', status),
     toastEl));
 
