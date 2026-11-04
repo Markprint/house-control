@@ -334,14 +334,17 @@ const builders = {
     g.add(at(cyl(r, 0.155, 0.045, white, 20), 0, 0.075, 0)); // 底0.155 顶0.13, 底面0.075 顶面0.12
     // round white tower, bottom buried in the base so they connect seamlessly
     g.add(at(cyl(r, r, towerH, white, 24), 0, baseH - 0.02, 0));  // 底面0.10 顶面0.10+1.18
-    // vertical black grille strips on the front: top aligned with the tower top, flush with the surface
+    // curved black grille strips wrapping the tower's cylindrical surface
     const grillH = towerH * 0.75;
-    const n = 8;
-    const gw = r * 1.5;
+    const grillR = r + 0.002;      // just proud of the tower surface
     const grillBot = baseH - 0.02 + towerH - grillH;   // top edge meets the tower top
+    const n = 8;
+    const arc = Math.PI * 0.55;    // front coverage ~99°
+    const step = arc / n;
     for (let i = 0; i < n; i++) {
-      const gx = -gw / 2 + (gw * (i + 0.5)) / n;
-      g.add(at(box(0.012, grillH, 0.007, grill, { r: 0.003 }), gx, grillBot, r - 0.003));
+      const a = Math.PI / 2 - arc / 2 + step * (i + 0.5);   // front face is +z
+      const geo = new THREE.CylinderGeometry(grillR, grillR, grillH, 10, 1, true, a - step * 0.3, step * 0.6);
+      g.add(at(new THREE.Mesh(geo, grill), 0, grillBot + grillH / 2, 0));
     }
     // thin top cap
     g.add(at(cyl(r + 0.004, r + 0.004, 0.015, white, 20), 0, baseH - 0.02 + towerH - 0.008, 0));
