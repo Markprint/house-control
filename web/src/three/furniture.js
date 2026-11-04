@@ -325,29 +325,42 @@ const builders = {
   fan({ height = 1.3 }) {
     const white = mat('#f5f3ee', { rough: 0.55 });
     const grill = mat('#2a2c30', { rough: 0.6 });
+    const screen = mat('#34383a', { rough: 0.45 });
+    const trim = mat('#d5d3ce', { rough: 0.45, metal: 0.18 });
     const g = group();
-    const r = 0.13;         // tower body radius
-    const baseH = 0.12;     // base total height
-    const towerH = height - baseH;  // tower height above the base
-    // white base: bottom on the floor (y=0), narrowing up to meet the tower
-    g.add(at(cyl(r, 0.2, 0.08, white, 20), 0, 0, 0));        // 底r0.2 顶r0.13, 底面y=0 顶面y=0.08
-    g.add(at(cyl(r, 0.155, 0.045, white, 20), 0, 0.075, 0)); // 底0.155 顶0.13, 底面0.075 顶面0.12
-    // round white tower, bottom buried in the base so they connect seamlessly
-    g.add(at(cyl(r, r, towerH, white, 24), 0, baseH - 0.02, 0));  // 底面0.10 顶面0.10+1.18
-    // curved black grille strips wrapping the tower's cylindrical surface
-    const grillH = towerH * 0.75;
-    const grillR = r + 0.002;      // just proud of the tower surface
-    const grillBot = baseH - 0.02 + towerH - grillH;   // top edge meets the tower top
-    const n = 8;
-    const arc = Math.PI * 0.55;    // front coverage ~99°
-    const step = arc / n;
-    for (let i = 0; i < n; i++) {
-      const a = Math.PI / 2 - arc / 2 + step * (i + 0.5);   // front face is +z
-      const geo = new THREE.CylinderGeometry(grillR, grillR, grillH, 10, 1, true, a - step * 0.3, step * 0.6);
-      g.add(at(new THREE.Mesh(geo, grill), 0, grillBot + grillH / 2, 0));
+    const r = 0.15;
+    const baseH = 0.075;
+    const bodyBottom = baseH - 0.015;
+    const bodyH = height - bodyBottom;
+    g.add(at(cyl(0.14, 0.30, 0.045, white, 32), 0, 0, 0));
+    g.add(at(cyl(0.14, 0.14, 0.035, trim, 32), 0, 0.04, 0));
+    g.add(at(cyl(r, 0.14, 0.045, white, 32), 0, 0.07, 0));
+    g.add(at(cyl(r, r, bodyH, white, 32), 0, bodyBottom, 0));
+
+    const grillH = bodyH * 0.63;
+    const grillBottom = bodyBottom + bodyH * 0.25;
+    const grillRadius = r + 0.002;
+    const columns = 11;
+    const arc = Math.PI * 0.72;
+    const cellArc = arc / columns;
+    for (let column = 0; column < columns; column++) {
+      const angle = Math.PI / 2 - arc / 2 + (column + 0.5) * cellArc;
+      const geo = new THREE.CylinderGeometry(grillRadius, grillRadius, grillH, 8, 1, true,
+        angle - cellArc * 0.34, cellArc * 0.68);
+      g.add(at(new THREE.Mesh(geo, grill), 0, grillBottom + grillH / 2, 0));
     }
-    // thin top cap
-    g.add(at(cyl(r + 0.004, r + 0.004, 0.015, white, 20), 0, baseH - 0.02 + towerH - 0.008, 0));
+
+    const screenY = bodyBottom + bodyH * 0.115;
+    const screenGeo = new THREE.CylinderGeometry(r + 0.003, r + 0.003, bodyH * 0.14, 32, 1, true,
+      Math.PI / 2 - 0.08, 0.16);
+    g.add(at(new THREE.Mesh(screenGeo, trim), 0, screenY, 0));
+    const screenInset = new THREE.CylinderGeometry(r + 0.005, r + 0.005, bodyH * 0.105, 32, 1, true,
+      Math.PI / 2 - 0.035, 0.07);
+    g.add(at(new THREE.Mesh(screenInset, screen), 0, screenY, 0));
+    g.add(at(box(0.014, bodyH * 0.085, 0.008, trim, { r: 0.007 }), 0, screenY, r * 0.99));
+    g.add(at(box(0.008, bodyH * 0.065, 0.009, screen, { r: 0.004 }), 0, screenY, r * 1.03));
+
+    g.add(at(cyl(r - 0.008, r - 0.008, 0.018, white, 32), 0, height - 0.009, 0));
     return g;
   },
 
