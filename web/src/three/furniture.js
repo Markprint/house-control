@@ -351,6 +351,60 @@ const builders = {
     return g;
   },
 
+  // A pair of curtains with continuous folds, a center opening, and tiebacks.
+  curtain({ width = 2.4, height = 2.5 }) {
+    const fabric = mat('#d9ccb9', { rough: 1 });
+    fabric.side = THREE.DoubleSide;
+    const rodMaterial = mat('#6b5643', { rough: 0.5, metal: 0.15 });
+    const tieMaterial = mat('#b59a78', { rough: 0.8 });
+    const g = group();
+    const rodHeight = height + 0.04;
+    const rod = at(cyl(0.025, 0.025, width + 0.18, rodMaterial, 12), (width + 0.18) / 2, rodHeight, 0);
+    rod.rotation.z = Math.PI / 2;
+    g.add(rod);
+
+    const makePanel = (side) => {
+      const outer = side * width / 2;
+      const inner = side * 0.09;
+      const columns = 16;
+      const rows = 6;
+      const positions = [];
+      const indices = [];
+      for (let row = 0; row <= rows; row++) {
+        const y = height * (1 - row / rows);
+        for (let column = 0; column <= columns; column++) {
+          const t = column / columns;
+          const x = outer + (inner - outer) * t;
+          const fold = Math.sin(t * Math.PI * 8) * 0.035;
+          const sag = 0.012 * Math.sin(t * Math.PI);
+          positions.push(x, y, fold + sag * (1 - y / height));
+        }
+      }
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          const a = row * (columns + 1) + column;
+          const b = a + 1;
+          const c = a + columns + 1;
+          const d = c + 1;
+          indices.push(a, c, b, b, c, d);
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      g.add(new THREE.Mesh(geometry, fabric));
+      const tieX = side * (width * 0.29);
+      g.add(at(cyl(0.018, 0.018, 0.055, tieMaterial, 10), tieX, height * 0.48, 0.045));
+    };
+    for (const side of [-1, 1]) makePanel(side);
+
+    for (const x of [-width / 2 - 0.09, width / 2 + 0.09]) {
+      g.add(at(cyl(0.055, 0.055, 0.04, rodMaterial, 16), x, rodHeight - 0.02, 0));
+    }
+    return g;
+  },
+
   // A straight flight up to the floor above: you step on at the front (+z) and climb towards the back.
   stairs({ width = 1, depth = 2.8, height = 2.9 }) {
     const steps = Math.max(3, Math.round(height / 0.18));
@@ -406,6 +460,7 @@ export function footprint(item) {
     case 'bookshelf': return [w || 1, 0.32];
     case 'stairs': return [w || 1, item.depth || 2.8];
     case 'fan': return [0.75, 0.75];
+    case 'curtain': return [w || 2.4, 0.1];
     default: return [0.6, 0.6];
   }
 }
